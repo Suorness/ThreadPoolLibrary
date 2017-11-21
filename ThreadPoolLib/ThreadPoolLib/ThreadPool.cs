@@ -103,20 +103,18 @@ namespace ThreadPoolLib
             for (int i = 0; i < countStartThread; i++)
             {
                 // TODO CHEACK CREATE
-                Task task = new Task(ThreadWork, TaskCreationOptions.LongRunning);
-                threadsEvent.Add(task.Id, new ManualResetEvent(false));
-                task.Start();
-                threadList.Add(task);
-
+                Task thread = new Task(ThreadWork, TaskCreationOptions.LongRunning);
+                threadsEvent.Add(thread.Id, new ManualResetEvent(false));
+                thread.Start();
+                threadList.Add(thread);
             }
             taskList = new List<TaskW>();
 
         }
         public void Start()
         {
-
+            StartTaskOnFreeThread();
         }
-        //wtf
 
         private void ThreadWork()
         {
@@ -125,7 +123,7 @@ namespace ThreadPoolLib
                 threadsEvent[Task.CurrentId].WaitOne();
                 // не будет работать вероятно 
                 TaskW task = null;
-                //task = SelectTask();
+                task = SelectTask();
                 if (task != null)
                 {
                     try
@@ -140,6 +138,51 @@ namespace ThreadPoolLib
                 }
             }
 
+        }
+
+        private TaskW SelectTask()
+        {
+            lock (taskList)
+            {
+                if (taskList.Count == 0)
+                {
+                    throw new ArgumentException();
+                    //TODO Log Exeption
+                }
+                var waitingTask = taskList.Where(t => !t.IsRun);
+                //TODO разграничать приоритеты
+                // Для проверки не будем учитывать приоритеты
+                if (waitingTask.Count() > 0)
+                {
+                    return waitingTask.ToArray().First();
+                }
+                else
+                {
+                    //TEST
+                    throw new Exception();
+                }
+            }
+        }
+
+        private void StartTaskOnFreeThread()
+        {
+            while (true)
+            {
+                addTaskEvent.WaitOne();
+                lock (threadList)
+                {
+                    foreach (var thread in threadList)
+                    {
+                        if (threadsEvent[thread.Id].WaitOne(0) == false)
+                        {
+                            threadsEvent[thread.Id].Set();
+                            break;
+                        }
+                    }
+                }
+
+                addTaskEvent.Reset();
+            }
         }
     }
 }
