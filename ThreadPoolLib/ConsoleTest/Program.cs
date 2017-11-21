@@ -13,11 +13,11 @@ namespace ConsoleTest
         {
             var pool = new ThreadPool(3,3);
             //pool.Start();
-            var test = new TaskW(() =>
+            var test = new ThreadPoolTask(() =>
            {
                Console.WriteLine("test");
            });
-            var test1 = new TaskW(() =>
+            var test1 = new ThreadPoolTask(() =>
             {
                 Console.WriteLine("test11");
             });

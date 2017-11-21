@@ -1,4 +1,5 @@
-﻿using System;
+﻿using NLog;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -9,11 +10,11 @@ namespace ThreadPoolLib
 {
     public class ThreadPool
     {
+        private static Logger logger = LogManager.GetCurrentClassLogger();
+
         private int countMaxThread;
-
         private int countThread;
-
-        private ManualResetEvent addTaskEvent;
+        private int countActiveThread;
 
         private ManualResetEvent stopTaskEvent;
 
@@ -21,32 +22,29 @@ namespace ThreadPoolLib
 
         private List<Task> threadList;
 
-        private List<TaskW> taskList;
+        private List<ThreadPoolTask> taskList;
 
         private object lockObj;
 
         private bool isStop;
 
-        private void AddTask(TaskW task)
+        private void AddTask(ThreadPoolTask task)
         {
             lock (taskList)
             {
                 taskList.Add(task);
             }
-
-            addTaskEvent.Set();
         }
 
-        private void DeleteTask(TaskW task)
+        private void DeleteTask(ThreadPoolTask task)
         {
             lock (taskList)
             {
                 taskList.Remove(task);
             }
-
         }
 
-        public bool Execute(TaskW task)
+        public bool Execute(ThreadPoolTask task)
         {
             bool result = true;
             lock (lockObj)
@@ -54,10 +52,13 @@ namespace ThreadPoolLib
                 if (!isStop)
                 {
                     AddTask(task);
+                    logger.Info("Add new task");
                     StartTaskOnFreeThread();
                 }
                 else
                 {
+                    string strE = "Task execution failed.";
+                    logger.Error(strE);
                     result = false;
                 }
             }
@@ -83,38 +84,51 @@ namespace ThreadPoolLib
         {
             if (countStartThread > countMaxThread)
             {
-                //TODO LOG Exeption
+                string strE = "The initial number of finished streams should not be more than the total number.";
+                logger.Error(strE);
+                throw new ArgumentException(strE);
             }
 
             if ((countMaxThread <= 0) || (countStartThread <= 0))
             {
-                //TODO LOG Exeption 
+                string strE = "The initial values of the number of threads must be positive and nonzero.";
+                logger.Error(strE);
+                throw new ArgumentException(strE);
             }
 
             this.countMaxThread = countMaxThread;
+            countThread = 0;
+            countActiveThread = 0;
 
             lockObj = new object();
 
             stopTaskEvent = new ManualResetEvent(false);
-            addTaskEvent = new ManualResetEvent(false);
 
-            threadsEvent = new Dictionary<int?, ManualResetEvent>(countMaxThread);
-
+            threadsEvent = new Dictionary<int?, ManualResetEvent>();
             threadList = new List<Task>();
+            taskList = new List<ThreadPoolTask>();
+
             for (int i = 0; i < countStartThread; i++)
             {
-                // TODO CHEACK CREATE
-                Task thread = new Task(ThreadWork, TaskCreationOptions.LongRunning);
-                threadsEvent.Add(thread.Id, new ManualResetEvent(false));
-                thread.Start();
-                threadList.Add(thread);
+                createThread();
             }
-            taskList = new List<TaskW>();
+            logger.Info("Added {0} threads",countStartThread);
+
 
         }
-        public void Start()
+        private void createThread()
         {
-            StartTaskOnFreeThread();
+            countThread++;
+            if (countThread > countMaxThread)
+            {
+                logger.Warn("The allowed number of threads is exceeded, an additional thread is allocated");
+                countMaxThread++;
+
+            }
+            Task thread = new Task(ThreadWork, TaskCreationOptions.LongRunning);
+            threadsEvent.Add(thread.Id, new ManualResetEvent(false));
+            thread.Start();
+            threadList.Add(thread);
         }
 
         private void ThreadWork()
@@ -122,8 +136,7 @@ namespace ThreadPoolLib
             while (true)
             {
                 threadsEvent[Task.CurrentId].WaitOne();
-                TaskW task = null;
-                task = SelectTask();
+                ThreadPoolTask task = SelectTask();
                 if (task != null)
                 {
                     try
@@ -132,9 +145,10 @@ namespace ThreadPoolLib
                     }
                     finally
                     {
-                       
                         if (isStop)
+                        {
                             stopTaskEvent.Set();
+                        }
                         threadsEvent[Task.CurrentId].Reset();
                     }
                 }
@@ -142,7 +156,7 @@ namespace ThreadPoolLib
 
         }
 
-        private TaskW SelectTask()
+        private ThreadPoolTask SelectTask()
         {
             lock (taskList)
             {
@@ -170,22 +184,17 @@ namespace ThreadPoolLib
 
         private void StartTaskOnFreeThread()
         {
-            //while (true)
-            //{
-            //    addTaskEvent.WaitOne();
-                lock (threadList)
+            lock (threadList)
+            {
+                foreach (var thread in threadList)
                 {
-                    foreach (var thread in threadList)
+                    if (threadsEvent[thread.Id].WaitOne(0) == false)
                     {
-                        if (threadsEvent[thread.Id].WaitOne(0) == false)
-                        {
-                            threadsEvent[thread.Id].Set();
-                            break;
-                        }
+                        threadsEvent[thread.Id].Set();
+                        break;
                     }
                 }
-            //    addTaskEvent.Reset();
-            //}
+            }
         }
     }
 }
