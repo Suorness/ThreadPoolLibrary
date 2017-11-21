@@ -19,13 +19,15 @@ namespace ThreadPoolLib
 
         private Dictionary<int, ManualResetEvent> threadsEvent;
 
-        private List<Task> taskList;
+        private Task[] threads;
+
+        private List<TaskW> taskList;
 
         private object lockObj;
 
         private bool isStop;
 
-        private void AddTask(Task task)
+        private void AddTask(TaskW task)
         {
             lock (taskList)
             {
@@ -35,7 +37,7 @@ namespace ThreadPoolLib
             addTaskEvent.Set();
         }
 
-        private void DeleteTask(Task task)
+        private void DeleteTask(TaskW task)
         {
             lock (taskList)
             {
@@ -44,7 +46,7 @@ namespace ThreadPoolLib
 
         }
 
-        public bool Execute(Task task)
+        public bool Execute(TaskW task)
         {
             bool result = true;
             lock (lockObj)
@@ -100,23 +102,37 @@ namespace ThreadPoolLib
             for (int i = 0; i < countStartThread; i++)
             {
                 // TODO CREATE thread 
+                threads[i] = new Task(ThreadWork(), TaskCreationOptions.LongRunning);
 
             }
-            taskList = new List<Task>();
+            taskList = new List<TaskW>();
 
         }
         public void Start()
         {
 
         }
-
-        private void ThreadWork()
+        //wtf
+        private  Action ThreadWork()
         {
             while (true)
             {
                 //threadsEvent[Thread.CurrentThread.ManagedThreadId].WaitOne();
                 // не будет работать вероятно 
-
+                TaskW task = null;
+                //task = SelectTask();
+                if (task != null)
+                {
+                    try
+                    {
+                        task.Execute();
+                    }
+                    finally
+                    {
+                        DeleteTask(task);
+                        // проверка на завершение
+                    }
+                }
             }
 
         }

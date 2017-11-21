@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace ThreadPoolLib
 {
-    public class Task
+    public class TaskW
     {
         private Action action;
 
@@ -15,13 +15,13 @@ namespace ThreadPoolLib
         private bool isRun;
 
 
-        public Task(Action action, Priority priority)
+        public TaskW(Action action, Priority priority)
         {
             this.action = action;
             this.priority = priority;
             isRun = false;
         }
-        public Task(Action action) : this(action, Priority.Normal) { }
+        public TaskW(Action action) : this(action, Priority.Normal) { }
 
         public void Execute()
         {
