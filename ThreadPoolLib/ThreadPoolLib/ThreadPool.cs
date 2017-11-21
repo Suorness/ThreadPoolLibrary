@@ -17,9 +17,9 @@ namespace ThreadPoolLib
 
         private ManualResetEvent stopTaskEvent;
 
-        private Dictionary<int, ManualResetEvent> threadsEvent;
+        private Dictionary<int?, ManualResetEvent> threadsEvent;
 
-        private Task[] threads;
+        private List<Task> threadList;
 
         private List<TaskW> taskList;
 
@@ -97,12 +97,16 @@ namespace ThreadPoolLib
             stopTaskEvent = new ManualResetEvent(false);
             addTaskEvent = new ManualResetEvent(false);
 
-            threadsEvent = new Dictionary<int, ManualResetEvent>(countMaxThread);
+            threadsEvent = new Dictionary<int?, ManualResetEvent>(countMaxThread);
 
+            threadList = new List<Task>();
             for (int i = 0; i < countStartThread; i++)
             {
-                // TODO CREATE thread 
-                threads[i] = new Task(ThreadWork(), TaskCreationOptions.LongRunning);
+                // TODO CHEACK CREATE
+                Task task = new Task(ThreadWork, TaskCreationOptions.LongRunning);
+                threadsEvent.Add(task.Id, new ManualResetEvent(false));
+                task.Start();
+                threadList.Add(task);
 
             }
             taskList = new List<TaskW>();
@@ -114,11 +118,11 @@ namespace ThreadPoolLib
         }
         //wtf
 
-        private  Action ThreadWork()
+        private void ThreadWork()
         {
             while (true)
             {
-                //threadsEvent[Thread.CurrentThread.ManagedThreadId].WaitOne();
+                threadsEvent[Task.CurrentId].WaitOne();
                 // не будет работать вероятно 
                 TaskW task = null;
                 //task = SelectTask();
