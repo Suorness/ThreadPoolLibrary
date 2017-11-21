@@ -14,7 +14,6 @@ namespace ThreadPoolLib
 
         private int countMaxThread;
         private int countThread;
-        private int countActiveThread;
 
         private ManualResetEvent stopTaskEvent;
 
@@ -33,6 +32,13 @@ namespace ThreadPoolLib
             lock (taskList)
             {
                 taskList.Add(task);
+            }
+        }
+        private void AddTaskRange(IEnumerable<ThreadPoolTask> tasks)
+        {
+            lock (taskList)
+            {
+                taskList.AddRange(tasks);
             }
         }
 
@@ -65,6 +71,30 @@ namespace ThreadPoolLib
             return result;
         }
 
+        public bool ExecuteRange(IEnumerable<ThreadPoolTask> tasks)
+        {
+            bool result = true;
+            lock (lockObj)
+            {
+                if (!isStop)
+                {
+                    AddTaskRange(tasks);
+                    logger.Info("Add new task, count:{0}", tasks.Count());
+                    for (int i = 0; i < tasks.Count(); i++)
+                    {
+                        StartTaskOnFreeThread();
+                    }
+                }
+                else
+                {
+                    string strE = "Task execution failed.";
+                    logger.Error(strE);
+                    result = false;
+                }
+            }
+            return result;
+        }
+
         public void Stop()
         {
             lock (lockObj)
@@ -84,7 +114,7 @@ namespace ThreadPoolLib
         {
             if (countStartThread > countMaxThread)
             {
-                string strE = "The initial number of finished streams should not be more than the total number.";
+                string strE = "The initial number of finished thread should not be more than the total number.";
                 logger.Error(strE);
                 throw new ArgumentException(strE);
             }
@@ -98,7 +128,6 @@ namespace ThreadPoolLib
 
             this.countMaxThread = countMaxThread;
             countThread = 0;
-            countActiveThread = 0;
 
             lockObj = new object();
 
@@ -112,11 +141,12 @@ namespace ThreadPoolLib
             {
                 createThread();
             }
-            logger.Info("Added {0} threads",countStartThread);
+            logger.Info("Added {0} threads", countStartThread);
 
 
         }
-        private void createThread()
+
+        private int createThread()
         {
             countThread++;
             if (countThread > countMaxThread)
@@ -129,6 +159,7 @@ namespace ThreadPoolLib
             threadsEvent.Add(thread.Id, new ManualResetEvent(false));
             thread.Start();
             threadList.Add(thread);
+            return thread.Id;
         }
 
         private void ThreadWork()
@@ -141,7 +172,12 @@ namespace ThreadPoolLib
                 {
                     try
                     {
+                        logger.Info("Running Task number {0}", Task.CurrentId);
                         task.Execute();
+                    }
+                    catch (Exception)
+                    {
+                        logger.Error("Execution error");
                     }
                     finally
                     {
@@ -158,42 +194,50 @@ namespace ThreadPoolLib
 
         private ThreadPoolTask SelectTask()
         {
+            ThreadPoolTask task = null;
             lock (taskList)
             {
-                if (taskList.Count == 0)
-                {
-                    throw new ArgumentException();
-                    //TODO Log Exeption
-                }
                 var waitingTask = taskList.Where(t => !t.IsRun);
-                //TODO разграничать приоритеты
-                // Для проверки не будем учитывать приоритеты
+
                 if (waitingTask.Count() > 0)
                 {
-                    var task = waitingTask.ToArray().First();
-                    DeleteTask(task);
-                    return task;
-                }
-                else
-                {
-                    //TEST
-                    throw new Exception();
+                    var priorities = (Priority[])Enum.GetValues(typeof(Priority));
+                    var ordered = priorities.OrderByDescending(x => x);
+                    foreach (var priority in ordered)
+                    {
+                        var maxPriority = waitingTask.Any(t => t.GetPriority == priority);
+                        if (maxPriority)
+                        {
+                            task = waitingTask.Where(t => t.GetPriority == priority).ToArray().First();
+                            DeleteTask(task);
+                            break;
+                        }
+                    }
+
                 }
             }
+            return task;
         }
 
         private void StartTaskOnFreeThread()
         {
             lock (threadList)
             {
+                var availableThread = false;
                 foreach (var thread in threadList)
                 {
                     if (threadsEvent[thread.Id].WaitOne(0) == false)
                     {
+                        availableThread = true;
                         threadsEvent[thread.Id].Set();
                         break;
                     }
                 }
+                if (!availableThread)
+                {
+                    threadsEvent[createThread()].Set();
+                }
+
             }
         }
     }

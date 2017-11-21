@@ -8,8 +8,8 @@ namespace ThreadPoolLib
 {
     public enum Priority
     {
-        Low,
-        Normal,
-        High
+        Low = 0,
+        Normal = 1,
+        High = 2
     }
 }
