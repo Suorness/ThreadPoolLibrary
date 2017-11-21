@@ -54,6 +54,7 @@ namespace ThreadPoolLib
                 if (!isStop)
                 {
                     AddTask(task);
+                    StartTaskOnFreeThread();
                 }
                 else
                 {
@@ -121,7 +122,6 @@ namespace ThreadPoolLib
             while (true)
             {
                 threadsEvent[Task.CurrentId].WaitOne();
-                // не будет работать вероятно 
                 TaskW task = null;
                 task = SelectTask();
                 if (task != null)
@@ -132,8 +132,10 @@ namespace ThreadPoolLib
                     }
                     finally
                     {
-                        DeleteTask(task);
-                        // проверка на завершение
+                       
+                        if (isStop)
+                            stopTaskEvent.Set();
+                        threadsEvent[Task.CurrentId].Reset();
                     }
                 }
             }
@@ -154,7 +156,9 @@ namespace ThreadPoolLib
                 // Для проверки не будем учитывать приоритеты
                 if (waitingTask.Count() > 0)
                 {
-                    return waitingTask.ToArray().First();
+                    var task = waitingTask.ToArray().First();
+                    DeleteTask(task);
+                    return task;
                 }
                 else
                 {
@@ -166,9 +170,9 @@ namespace ThreadPoolLib
 
         private void StartTaskOnFreeThread()
         {
-            while (true)
-            {
-                addTaskEvent.WaitOne();
+            //while (true)
+            //{
+            //    addTaskEvent.WaitOne();
                 lock (threadList)
                 {
                     foreach (var thread in threadList)
@@ -180,9 +184,8 @@ namespace ThreadPoolLib
                         }
                     }
                 }
-
-                addTaskEvent.Reset();
-            }
+            //    addTaskEvent.Reset();
+            //}
         }
     }
 }

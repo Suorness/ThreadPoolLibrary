@@ -11,8 +11,20 @@ namespace ConsoleTest
     {
         static void Main(string[] args)
         {
-            var pool = new ThreadPool(1,1);
-
+            var pool = new ThreadPool(3,3);
+            //pool.Start();
+            var test = new TaskW(() =>
+           {
+               Console.WriteLine("test");
+           });
+            var test1 = new TaskW(() =>
+            {
+                Console.WriteLine("test11");
+            });
+            pool.Execute(test);
+            pool.Execute(test1);
+            //pool.Start();
+            Console.ReadLine();
         }
     }
 }
