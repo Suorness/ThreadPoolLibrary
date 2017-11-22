@@ -10,10 +10,14 @@ namespace ThreadPoolLib
 {
     public class ThreadPool
     {
+
+        CancellationTokenSource tokenSource;
+
         private static Logger logger = LogManager.GetCurrentClassLogger();
 
         private int countMaxThread;
         private int countThread;
+        private int countActiveThread;
 
         private ManualResetEvent stopTaskEvent;
 
@@ -24,8 +28,10 @@ namespace ThreadPoolLib
         private List<ThreadPoolTask> taskList;
 
         private object lockObj;
+        private object lockCount;
 
         private bool isStop;
+        private bool isDispose;
 
         private void AddTask(ThreadPoolTask task)
         {
@@ -101,13 +107,47 @@ namespace ThreadPoolLib
             {
                 isStop = true;
             }
-            while (taskList.Count > 0)
+            int temp = 0;
+            do
             {
-                //TODO STOP
+                lock (lockCount)
+                {
+                    temp = countActiveThread;
+                }
+                stopTaskEvent.WaitOne(10);
+                stopTaskEvent.Reset();
+                //logger.Info("Итерация {0}", temp);
             }
-            // TODO DISPOSE
+            while (temp > 0);
+            Dispose();
         }
-
+        private void Dispose()
+        {
+            if (!isDispose)
+            {
+                tokenSource.Cancel();
+                foreach (var thread in threadList)
+                {
+                    threadsEvent[thread.Id].Set();
+                    threadsEvent[thread.Id].Dispose();
+                }
+                stopTaskEvent.Dispose();
+                try
+                {
+                    Task.WaitAll(threadList.ToArray());
+                }
+                catch (AggregateException e)
+                {
+                    logger.Error("Dispose error.");
+                }
+                finally
+                {
+                    tokenSource.Dispose();
+                }
+                logger.Info("Остановлено");
+                isDispose = true;
+            }
+        }
         public ThreadPool() : this(System.Environment.ProcessorCount, System.Environment.ProcessorCount) { }
 
         public ThreadPool(int countStartThread, int countMaxThread)
@@ -128,10 +168,13 @@ namespace ThreadPoolLib
 
             this.countMaxThread = countMaxThread;
             countThread = 0;
+            countActiveThread = 0;
 
             lockObj = new object();
+            lockCount = new object();
 
             stopTaskEvent = new ManualResetEvent(false);
+            tokenSource = new CancellationTokenSource();
 
             threadsEvent = new Dictionary<int?, ManualResetEvent>();
             threadList = new List<Task>();
@@ -155,7 +198,7 @@ namespace ThreadPoolLib
                 countMaxThread++;
 
             }
-            Task thread = new Task(ThreadWork, TaskCreationOptions.LongRunning);
+            Task thread = new Task(ThreadWork, tokenSource.Token, TaskCreationOptions.LongRunning);
             threadsEvent.Add(thread.Id, new ManualResetEvent(false));
             thread.Start();
             threadList.Add(thread);
@@ -167,6 +210,11 @@ namespace ThreadPoolLib
             while (true)
             {
                 threadsEvent[Task.CurrentId].WaitOne();
+                if (tokenSource.IsCancellationRequested)
+                {
+                    logger.Info("Завершен");
+                    return;
+                }
                 ThreadPoolTask task = SelectTask();
                 if (task != null)
                 {
@@ -181,11 +229,18 @@ namespace ThreadPoolLib
                     }
                     finally
                     {
+
                         if (isStop)
                         {
                             stopTaskEvent.Set();
                         }
+
                         threadsEvent[Task.CurrentId].Reset();
+
+                        lock (lockCount)
+                        {
+                            countActiveThread--;
+                        }
                     }
                 }
             }
@@ -235,6 +290,12 @@ namespace ThreadPoolLib
                 }
                 if (!availableThread)
                 {
+                    ///
+                    lock (lockCount)
+                    {
+                        countActiveThread++;
+                    }
+
                     threadsEvent[createThread()].Set();
                 }
 
