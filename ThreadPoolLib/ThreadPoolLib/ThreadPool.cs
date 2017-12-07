@@ -10,7 +10,6 @@ namespace ThreadPoolLib
 {
     public class ThreadPool
     {
-
         CancellationTokenSource tokenSource;
 
         private static Logger logger = LogManager.GetCurrentClassLogger();
@@ -61,7 +60,7 @@ namespace ThreadPoolLib
                 {
                     AddTask(task);
                     logger.Info("Add new task");
-                    StartTaskOnFreeThread();
+                    StartTaskOnThread();
                 }
                 else
                 {
@@ -84,7 +83,7 @@ namespace ThreadPoolLib
                     logger.Info("Add new task, count:{0}", tasks.Count());
                     for (int i = 0; i < tasks.Count(); i++)
                     {
-                        StartTaskOnFreeThread();
+                        StartTaskOnThread();
                     }
                 }
                 else
@@ -103,6 +102,7 @@ namespace ThreadPoolLib
             {
                 isStop = true;
             }
+
             int temp = 0;
             do
             {
@@ -110,7 +110,6 @@ namespace ThreadPoolLib
                 {
                     temp = countActiveThread;
                 }
-                //logger.Info("Итерация {0}", temp);
             }
             while (temp > 0);
             //logger.Info("Вышло {0}", temp);
@@ -176,14 +175,12 @@ namespace ThreadPoolLib
 
             for (int i = 0; i < countStartThread; i++)
             {
-                createThread();
+                CreateThread();
             }
             logger.Info("Added {0} threads", countStartThread);
-
-
         }
 
-        private int createThread()
+        private int CreateThread()
         {
             countThread++;
             if (countThread > countMaxThread)
@@ -201,14 +198,9 @@ namespace ThreadPoolLib
 
         private void ThreadWork()
         {
-            while (true)
+            while (!tokenSource.IsCancellationRequested)
             {
                 threadsEvent[Task.CurrentId].WaitOne();
-                if (tokenSource.IsCancellationRequested)
-                {
-                    //logger.Info("Завершен");
-                    return;
-                }
                 ThreadPoolTask task = SelectTask();
                 if (task != null)
                 {
@@ -216,6 +208,7 @@ namespace ThreadPoolLib
                     {
                         logger.Info("Running Task number {0}", Task.CurrentId);
                         task.Execute();
+                        logger.Info("End Task number {0}", Task.CurrentId);
                     }
                     catch (Exception)
                     {
@@ -227,7 +220,6 @@ namespace ThreadPoolLib
                         lock (lockCount)
                         {
                             countActiveThread--;
-                            //logger.Info("Декримент {0}", countActiveThread);
                         }
                     }
                 }
@@ -262,7 +254,7 @@ namespace ThreadPoolLib
             return task;
         }
 
-        private void StartTaskOnFreeThread()
+        private void StartTaskOnThread()
         {
             lock (threadList)
             {
@@ -275,7 +267,6 @@ namespace ThreadPoolLib
                         threadsEvent[thread.Id].Set();
                         lock (lockCount)
                         {
-                            //logger.Info("Инкримент {0}", countActiveThread);
                             countActiveThread++;
                         }
                         break;
@@ -285,11 +276,10 @@ namespace ThreadPoolLib
                 {
                     lock (lockCount)
                     {
-                        //logger.Info("Инкримент {0}", countActiveThread);
                         countActiveThread++;
                     }
 
-                    threadsEvent[createThread()].Set();
+                    threadsEvent[CreateThread()].Set();
                 }
 
             }
